@@ -1,0 +1,45 @@
+# Skillcheck circle detection geometry (resolution-dependent).
+[geometry]
+circle_center_x = 960
+circle_center_y = 530
+circle_radius = 65
+# [probably you don't want to change this]
+crop_size = 300
+
+[colors]
+# Red pointer: hue range (hue outside this band = red), min saturation, min brightness.
+red_hue_min = 15.0
+red_hue_max = 345.0
+red_sat_min = 0.6
+red_val_min = 0.5
+# White (Great) zone: max saturation, min brightness.
+white_sat_max = 0.15
+white_val_min = 0.85
+
+[timing]
+# Click trigger offset (ms). Increase if late, decrease if early.
+latency_ms = 20.0
+# [probably you don't want to change this]
+speed_history_min = 8
+calibrating_samples = 3
+active_miss = 3
+calibrating_miss = 2
+
+[input]
+# Spacebar hold time in milliseconds.
+key_hold_ms = 70
+# [ADVANCED - probably you don't want to change this]
+device_name = "Logitech USB Keyboard"
+vendor_id = 1133
+product_id = 50475
+
+# [probably you don't want to change this]
+[detection]
+dark_value_threshold = 0.1
+inner_enter = 0.85
+inner_exit = 0.6
+ring_boost = 0.5
+ring_discount = 0.25
+grey_v_min = 0.15
+grey_v_max = 0.7
+grey_s_max = 0.3
