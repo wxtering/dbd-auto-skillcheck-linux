@@ -54,9 +54,9 @@ impl Default for DetectionConfig {
     fn default() -> Self {
         Self {
             dark_value_threshold: 0.10,
-            inner_enter: 0.85,
-            inner_exit: 0.60,
-            ring_boost: 0.50,
+            inner_enter: 0.75,
+            inner_exit: 0.55,
+            ring_boost: 0.70,
             ring_discount: 0.25,
             grey_v_min: 0.15,
             grey_v_max: 0.70,
@@ -185,9 +185,9 @@ product_id = 50475
 # [probably you don't want to change this]
 [detection]
 dark_value_threshold = 0.1
-inner_enter = 0.85
-inner_exit = 0.6
-ring_boost = 0.5
+inner_enter = 0.75
+inner_exit = 0.55
+ring_boost = 0.7
 ring_discount = 0.25
 grey_v_min = 0.15
 grey_v_max = 0.7

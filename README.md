@@ -32,8 +32,11 @@ Unlike traditional screenshot-based bots, this project imports PipeWire DMA-BUF 
 * **Evdev Input Injection**: Emulates keypresses using `/dev/uinput`, appearing as a standard input device.
 
 ## Requirements
-* Wayland compositor supporting DMA-BUF screencast sharing (tested and works out-of-the-box on **Niri**; other compositors must negotiate DMA-BUF stream capture instead of fallback SHM).
-* PipeWire
+* **Rust toolchain** (cargo, rustc 1.75+ or newer)
+* Wayland compositor supporting DMA-BUF screencast sharing (tested and works out-of-the-box on **Niri** and **KDE Plasma 6**; other compositors must negotiate DMA-BUF stream capture instead of fallback SHM).
+* PipeWire (including headers/development libraries)
+* **Clang** (required by `bindgen` to generate Rust bindings for PipeWire/SPA headers during build)
+* **pkg-config** (required to locate PipeWire libraries)
 * Vulkan 1.2+
 * Linux with `/dev/uinput` support
 
@@ -107,6 +110,8 @@ To adapt the bot to your resolution (fhd and qhd should work fine) or reshade:
 3. Use the **Color Picker** tool to find the pixel coordinates of the skillcheck circle's center, then update `circle_center_x` and `circle_center_y` in the configuration.
 
 > **Note**: This bot processes colors in **HSV** (Hue, Saturation, Value) space instead of RGB. HSV color spaces are much more robust and work significantly better with **Reshade** shaders or custom in-game overlays. Tested without Reshade — Reshade should work fine as long as it doesn't significantly alter the HSV values of the skillcheck widget's core colors (white zone, red pointer).
+> 
+> ❄️ **Bright / Snow Maps (e.g., Ormond)**: Since the widget detection is based on circular HSV color thresholding (looking for a dark inner circle and the white zone), very bright/white backgrounds (like looking directly at snow, bright lights, or fog) might wash out or overlap with the widget's HSV thresholds. In such cases, the skillcheck might not be detected. To resolve this, you can adjust the `grey_v_min`/`grey_v_max` and `white_val_min` HSV thresholds in the configuration.
 
 ## TODO
 

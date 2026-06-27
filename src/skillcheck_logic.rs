@@ -220,7 +220,7 @@ fn find_white_edges(angles_mask: &[bool; 360]) -> Option<(f32, f32)> {
         best_len = cur_len;
         best_start = cur_start;
     }
-    if best_len >= 3 {
+    if best_len >= 5 {
         let start = best_start as f32;
         let end = ((best_start + best_len as usize) % 360) as f32;
         Some((start, if end <= start { end + 360.0 } else { end }))
@@ -242,7 +242,7 @@ fn find_cluster_center(angles_mask: &[bool; 360]) -> Option<f32> {
             count += 1;
         }
     }
-    if count == 0 {
+    if count < 3 {
         return None;
     }
     let mut mean_rad = sum_sin.atan2(sum_cos);
@@ -389,7 +389,17 @@ pub fn process_skillcheck_frame(
     } else {
         inner_thr_base
     };
-    let widget_visible = inner_ratio >= inner_thr;
+    let mut widget_visible = inner_ratio >= inner_thr;
+    let mut pre_scanned = None;
+
+    if !widget_visible && ring_ok {
+        let (target_angle, pointer_angle, edges) =
+            scan_angles(pixels, stride, circle_pattern, params);
+        if target_angle.is_some() && pointer_angle.is_some() && edges.is_some() {
+            widget_visible = true;
+            pre_scanned = Some((target_angle, pointer_angle, edges));
+        }
+    }
 
     if !widget_visible {
         if let SkillCheckState::Active(ctx) = state {
@@ -416,9 +426,17 @@ pub fn process_skillcheck_frame(
 
     match state {
         SkillCheckState::InSearch => {
-            let (target_angle, pointer_angle, edges) =
-                scan_angles(pixels, stride, circle_pattern, params);
+            let (target_angle, pointer_angle, edges) = match pre_scanned {
+                Some(angles) => angles,
+                None => scan_angles(pixels, stride, circle_pattern, params),
+            };
             if let (Some(target), Some(pointer)) = (target_angle, pointer_angle) {
+                // Стрелка в DbD всегда стартует на 12 часах (0/360 градусов).
+                // Учитываем небольшой сдвиг за первые кадры (до 25°).
+                let is_at_start = pointer < 25.0 || pointer > 345.0;
+                if !is_at_start {
+                    return;
+                }
                 if let Some((start, end)) = edges {
                     println!(
                         "White zone edges: {:.0}-{:.0}° (width {:.0}°)",
@@ -447,8 +465,10 @@ pub fn process_skillcheck_frame(
             pointer: init_pointer,
             ..
         } => {
-            let (target_angle, pointer_angle, _edges) =
-                scan_angles(pixels, stride, circle_pattern, params);
+            let (target_angle, pointer_angle, _edges) = match pre_scanned {
+                Some(angles) => angles,
+                None => scan_angles(pixels, stride, circle_pattern, params),
+            };
             let pointer = pointer_angle.unwrap_or(*init_pointer);
             let mut samples = target_samples.clone();
             if let Some(t) = target_angle {
@@ -480,7 +500,10 @@ pub fn process_skillcheck_frame(
             if ctx.has_clicked {
                 return;
             }
-            let (_, pointer_angle, _edges) = scan_angles(pixels, stride, circle_pattern, params);
+            let (_, pointer_angle, _edges) = match pre_scanned {
+                Some(angles) => angles,
+                None => scan_angles(pixels, stride, circle_pattern, params),
+            };
             let Some(pointer) = pointer_angle else {
                 return;
             };
