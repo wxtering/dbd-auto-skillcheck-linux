@@ -258,7 +258,7 @@ fn scan_angles(
     stride: usize,
     circle_pattern: &[Pixel],
     params: &SkillCheckParams,
-    log_tx: &tokio::sync::mpsc::Sender<String>,
+    _log_tx: &tokio::sync::mpsc::Sender<String>,
 ) -> (Option<f32>, Option<f32>, Option<(f32, f32)>) {
     let mut is_red = [false; 360];
     let mut is_white = [false; 360];
@@ -280,14 +280,6 @@ fn scan_angles(
     let edges = find_white_edges(&is_white);
     let target_angle = edges.map(|(s, e)| (s + e) / 2.0);
     let pointer_angle = find_cluster_center(&is_red);
-    if let (Some(t), Some(p), Some((s, e))) = (target_angle, pointer_angle, edges) {
-        log_tx
-            .try_send(format!(
-                "Skillcheck detected! Target: {:.1}°, Pointer: {:.1}° (Edges: {:.0}-{:.0}°)",
-                t, p, s, e
-            ))
-            .ok();
-    }
     (target_angle, pointer_angle, edges)
 }
 
@@ -402,7 +394,7 @@ pub fn process_skillcheck_frame(
     let mut widget_visible = inner_ratio >= inner_thr;
     let mut pre_scanned = None;
 
-    if !widget_visible && ring_ok {
+    if !widget_visible && ring_ok && inner_ratio > 0.35 {
         let (target_angle, pointer_angle, edges) =
             scan_angles(pixels, stride, circle_pattern, params, log_tx);
         if target_angle.is_some() && pointer_angle.is_some() && edges.is_some() {
@@ -448,13 +440,18 @@ pub fn process_skillcheck_frame(
                 None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
             if let (Some(target), Some(pointer)) = (target_angle, pointer_angle) {
-                // Стрелка в DbD всегда стартует на 12 часах (0/360 градусов).
-                // Учитываем небольшой сдвиг за первые кадры (до 25°).
                 let is_at_start = pointer < 25.0 || pointer > 345.0;
                 if !is_at_start {
                     return;
                 }
-                if let Some((_start, _end)) = edges {}
+                if let Some((s, e)) = edges {
+                    log_tx
+                        .try_send(format!(
+                            "Skillcheck detected! Target: {:.1}°, Pointer: {:.1}° (Edges: {:.0}-{:.0}°)",
+                            target, pointer, s, e
+                        ))
+                        .ok();
+                }
                 *state = SkillCheckState::Calibrating {
                     target_samples: vec![target],
                     pointer,
@@ -551,7 +548,7 @@ pub fn process_skillcheck_frame(
                     if time_to_go <= params.latency_ms {
                         log_tx
                             .try_send(format!(
-                                "___CLICK__ Target: {:.1}, Pointer: {:.1}, Speed: {:.4} deg/ms",
+                                "CLICK Target: {:.1}, Pointer: {:.1}, Speed: {:.4} deg/ms",
                                 ctx.target_angle, pointer, ctx.angular_speed
                             ))
                             .ok();
