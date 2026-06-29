@@ -1,5 +1,7 @@
 # DBD Auto-SkillCheck Linux
 
+![GUI Screenshot](assets/gui_screenshot.png)
+
 A simple and highly optimized auto-skillcheck bot for Dead by Daylight on Linux.
 
 > ⚠️ **Important Warning**: This bot relies on PipeWire DMA-BUF frame negotiation, which is highly compositor-dependent. It has only been tested and is guaranteed to work out-of-the-box on the **Niri** compositor. On other compositors (like GNOME/Mutter or KDE/KWin), it may fallback to SHM (Shared Memory) streams and fail to run, or require additional configuration. 
@@ -80,19 +82,31 @@ Then:
 
 ## Usage
 
-1. Build the binary in release mode:
+1. Build the project in release mode:
    ```bash
    cargo build --release
    ```
-2. Run the application:
-   ```bash
-   ./target/release/dbd-auto-skillcheck-linux
-   ```
-   *(Wayland will prompt you to share your screen).*
 
-Optionally, you can copy the compiled binary to your local path for global execution:
+You can run the bot in two modes:
+
+### Option A: GUI Mode (Recommended)
+A hardware-accelerated egui window that allows you to easily calibrate parameters in real-time and view live detection logs:
 ```bash
-cp target/release/dbd-auto-skillcheck-linux ~/.local/bin/
+./target/release/gui
+```
+
+### Option B: CLI Mode (Headless)
+A minimal, console-only version that runs headlessly and reads settings directly from your configuration file:
+```bash
+./target/release/cli
+```
+
+*(Wayland will prompt you to share the game window on startup).*
+
+Optionally, you can copy the compiled binaries to your local path for global execution:
+```bash
+cp target/release/gui ~/.local/bin/dbd-skillcheck-gui
+cp target/release/cli ~/.local/bin/dbd-skillcheck-cli
 ```
 
 ## Configuration
