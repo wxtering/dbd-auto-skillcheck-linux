@@ -40,50 +40,50 @@ impl Default for GeometryConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectionConfig {
-    pub dark_value_threshold: f32,
-    pub inner_enter: f32,
-    pub inner_exit: f32,
-    pub ring_boost: f32,
-    pub ring_discount: f32,
-    pub grey_v_min: f32,
-    pub grey_v_max: f32,
-    pub grey_s_max: f32,
+    pub inner_enter: f64,
+    pub inner_exit: f64,
+    pub ring_threshold: f64,
+    pub ring_discount: f64,
 }
 
 impl Default for DetectionConfig {
     fn default() -> Self {
         Self {
-            dark_value_threshold: 0.10,
             inner_enter: 0.75,
             inner_exit: 0.55,
-            ring_boost: 0.70,
+            ring_threshold: 0.70,
             ring_discount: 0.25,
-            grey_v_min: 0.15,
-            grey_v_max: 0.70,
-            grey_s_max: 0.30,
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColorConfig {
-    pub red_hue_min: f32,
-    pub red_hue_max: f32,
-    pub red_sat_min: f32,
-    pub red_val_min: f32,
-    pub white_sat_max: f32,
-    pub white_val_min: f32,
+    pub dark_val: f64,
+    pub red_hue_min: f64,
+    pub red_hue_max: f64,
+    pub red_sat_min: f64,
+    pub red_val_min: f64,
+    pub white_sat_max: f64,
+    pub white_val_min: f64,
+    pub grey_val_min: f64,
+    pub grey_val_max: f64,
+    pub grey_sat_max: f64,
 }
 
 impl Default for ColorConfig {
     fn default() -> Self {
         Self {
+            dark_val: 0.10,
             red_hue_min: 15.0,
             red_hue_max: 345.0,
             red_sat_min: 0.6,
             red_val_min: 0.5,
             white_sat_max: 0.15,
             white_val_min: 0.85,
+            grey_val_min: 0.15,
+            grey_val_max: 0.70,
+            grey_sat_max: 0.30,
         }
     }
 }
@@ -91,7 +91,7 @@ impl Default for ColorConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimingConfig {
     pub speed_history_min: usize,
-    pub latency_ms: f32,
+    pub latency_ms: f64,
     pub calibrating_samples: usize,
     pub active_miss: usize,
     pub calibrating_miss: usize,
@@ -123,6 +123,14 @@ impl Default for InputConfig {
             vendor_id: 0x046d,
             product_id: 0xC52B,
         }
+    }
+}
+
+impl Config {
+    pub fn save(&self) -> std::io::Result<()> {
+        let toml_string = toml::to_string_pretty(self).unwrap();
+        let path = get_config_folder().join("config.toml");
+        std::fs::write(path, toml_string)
     }
 }
 
@@ -159,6 +167,8 @@ circle_radius = 65
 crop_size = 300
 
 [colors]
+# Minimum luminance value below which a pixel is considered "dark" (inner circle).
+dark_val = 0.1
 # Red pointer: hue range (hue outside this band = red), min saturation, min brightness.
 red_hue_min = 15.0
 red_hue_max = 345.0
@@ -167,6 +177,10 @@ red_val_min = 0.5
 # White (Great) zone: max saturation, min brightness.
 white_sat_max = 0.15
 white_val_min = 0.85
+# Grey background ring: value (brightness) min/max, max saturation.
+grey_val_min = 0.15
+grey_val_max = 0.7
+grey_sat_max = 0.3
 
 [timing]
 # Click trigger offset (ms). Increase if late, decrease if early.
@@ -184,12 +198,8 @@ product_id = 50475
 
 # [probably you don't want to change this]
 [detection]
-dark_value_threshold = 0.1
 inner_enter = 0.75
 inner_exit = 0.55
-ring_boost = 0.7
+ring_threshold = 0.7
 ring_discount = 0.25
-grey_v_min = 0.15
-grey_v_max = 0.7
-grey_s_max = 0.3
 "##;

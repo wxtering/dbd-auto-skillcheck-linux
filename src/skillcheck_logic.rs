@@ -53,22 +53,22 @@ impl From<&Config> for SkillCheckParams {
         let c = &cfg.colors;
         let t = &cfg.timing;
         Self {
-            dark_value_threshold: d.dark_value_threshold,
-            inner_enter: d.inner_enter,
-            inner_exit: d.inner_exit,
-            ring_boost: d.ring_boost,
-            ring_discount: d.ring_discount,
-            grey_v_min: d.grey_v_min,
-            grey_v_max: d.grey_v_max,
-            grey_s_max: d.grey_s_max,
-            red_hue_min: c.red_hue_min,
-            red_hue_max: c.red_hue_max,
-            red_sat_min: c.red_sat_min,
-            red_val_min: c.red_val_min,
-            white_sat_max: c.white_sat_max,
-            white_val_min: c.white_val_min,
+            dark_value_threshold: c.dark_val as f32,
+            inner_enter: d.inner_enter as f32,
+            inner_exit: d.inner_exit as f32,
+            ring_boost: d.ring_threshold as f32,
+            ring_discount: d.ring_discount as f32,
+            grey_v_min: c.grey_val_min as f32,
+            grey_v_max: c.grey_val_max as f32,
+            grey_s_max: c.grey_sat_max as f32,
+            red_hue_min: c.red_hue_min as f32,
+            red_hue_max: c.red_hue_max as f32,
+            red_sat_min: c.red_sat_min as f32,
+            red_val_min: c.red_val_min as f32,
+            white_sat_max: c.white_sat_max as f32,
+            white_val_min: c.white_val_min as f32,
             speed_history_min: t.speed_history_min,
-            latency_ms: t.latency_ms,
+            latency_ms: t.latency_ms as f32,
             calibrating_samples: t.calibrating_samples,
             active_miss: t.active_miss,
             calibrating_miss: t.calibrating_miss,
@@ -258,6 +258,7 @@ fn scan_angles(
     stride: usize,
     circle_pattern: &[Pixel],
     params: &SkillCheckParams,
+    log_tx: &tokio::sync::mpsc::Sender<String>,
 ) -> (Option<f32>, Option<f32>, Option<(f32, f32)>) {
     let mut is_red = [false; 360];
     let mut is_white = [false; 360];
@@ -279,6 +280,14 @@ fn scan_angles(
     let edges = find_white_edges(&is_white);
     let target_angle = edges.map(|(s, e)| (s + e) / 2.0);
     let pointer_angle = find_cluster_center(&is_red);
+    if let (Some(t), Some(p), Some((s, e))) = (target_angle, pointer_angle, edges) {
+        log_tx
+            .try_send(format!(
+                "Skillcheck detected! Target: {:.1}°, Pointer: {:.1}° (Edges: {:.0}-{:.0}°)",
+                t, p, s, e
+            ))
+            .ok();
+    }
     (target_angle, pointer_angle, edges)
 }
 
@@ -357,6 +366,7 @@ pub fn process_skillcheck_frame(
     state: &mut SkillCheckState,
     params: &SkillCheckParams,
     input_emulator: &mut KeyboardEmulator,
+    log_tx: &tokio::sync::mpsc::Sender<String>,
 ) {
     let (circle_pattern, inner_pattern, _pointer_pattern) = patternes;
 
@@ -394,7 +404,7 @@ pub fn process_skillcheck_frame(
 
     if !widget_visible && ring_ok {
         let (target_angle, pointer_angle, edges) =
-            scan_angles(pixels, stride, circle_pattern, params);
+            scan_angles(pixels, stride, circle_pattern, params, log_tx);
         if target_angle.is_some() && pointer_angle.is_some() && edges.is_some() {
             widget_visible = true;
             pre_scanned = Some((target_angle, pointer_angle, edges));
@@ -405,16 +415,23 @@ pub fn process_skillcheck_frame(
         if let SkillCheckState::Active(ctx) = state {
             ctx.consecutive_misses += 1;
             if ctx.consecutive_misses as usize >= params.active_miss {
-                println!("Skillcheck inactive ({} misses).", params.active_miss);
+                log_tx
+                    .try_send(format!(
+                        "Skillcheck inactive ({} misses).",
+                        ctx.consecutive_misses
+                    ))
+                    .ok();
                 *state = SkillCheckState::InSearch;
             }
         } else if let SkillCheckState::Calibrating { misses, .. } = state {
             *misses += 1;
             if *misses as usize >= params.calibrating_miss {
-                println!(
-                    "Skillcheck lost during calibration ({} misses).",
-                    params.calibrating_miss
-                );
+                log_tx
+                    .try_send(format!(
+                        "Skillcheck lost during calibration ({} misses).",
+                        misses
+                    ))
+                    .ok();
                 *state = SkillCheckState::InSearch;
             }
         }
@@ -428,7 +445,7 @@ pub fn process_skillcheck_frame(
         SkillCheckState::InSearch => {
             let (target_angle, pointer_angle, edges) = match pre_scanned {
                 Some(angles) => angles,
-                None => scan_angles(pixels, stride, circle_pattern, params),
+                None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
             if let (Some(target), Some(pointer)) = (target_angle, pointer_angle) {
                 // Стрелка в DbD всегда стартует на 12 часах (0/360 градусов).
@@ -437,22 +454,7 @@ pub fn process_skillcheck_frame(
                 if !is_at_start {
                     return;
                 }
-                if let Some((start, end)) = edges {
-                    println!(
-                        "White zone edges: {:.0}-{:.0}° (width {:.0}°)",
-                        start,
-                        end,
-                        if end > start {
-                            end - start
-                        } else {
-                            end + 360.0 - start
-                        }
-                    );
-                }
-                println!(
-                    "Skillcheck detected! Target: {:.1}°, Pointer: {:.1}°",
-                    target, pointer
-                );
+                if let Some((_start, _end)) = edges {}
                 *state = SkillCheckState::Calibrating {
                     target_samples: vec![target],
                     pointer,
@@ -467,7 +469,7 @@ pub fn process_skillcheck_frame(
         } => {
             let (target_angle, pointer_angle, _edges) = match pre_scanned {
                 Some(angles) => angles,
-                None => scan_angles(pixels, stride, circle_pattern, params),
+                None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
             let pointer = pointer_angle.unwrap_or(*init_pointer);
             let mut samples = target_samples.clone();
@@ -476,7 +478,13 @@ pub fn process_skillcheck_frame(
             }
             if samples.len() >= params.calibrating_samples {
                 let avg = samples.iter().sum::<f32>() / samples.len() as f32;
-                println!("Target calibrated: {:.1}° ({} samples)", avg, samples.len());
+                log_tx
+                    .try_send(format!(
+                        "Target calibrated: {:.1}° ({} samples)",
+                        avg,
+                        samples.len()
+                    ))
+                    .ok();
                 let mut history = VecDeque::with_capacity(params.speed_history_min.max(8));
                 history.push_back((Instant::now(), pointer));
                 *state = SkillCheckState::Active(ActiveContext {
@@ -502,7 +510,7 @@ pub fn process_skillcheck_frame(
             }
             let (_, pointer_angle, _edges) = match pre_scanned {
                 Some(angles) => angles,
-                None => scan_angles(pixels, stride, circle_pattern, params),
+                None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
             let Some(pointer) = pointer_angle else {
                 return;
@@ -541,13 +549,13 @@ pub fn process_skillcheck_frame(
                 if angle_to_go > 0.0 {
                     let time_to_go = angle_to_go / ctx.angular_speed;
                     if time_to_go <= params.latency_ms {
-                        println!(
-                            "___CLICK__ Target: {:.1}, Pointer: {:.1}, Speed: {:.4} deg/ms (Time to go: {:.1} ms)",
-                            unwrapped_target, ctx.unwrapped_angle, ctx.angular_speed, time_to_go
-                        );
-                        if let Err(e) = input_emulator.press_space() {
-                            eprintln!("Failed to simulate spacebar press: {:?}", e);
-                        }
+                        log_tx
+                            .try_send(format!(
+                                "___CLICK__ Target: {:.1}, Pointer: {:.1}, Speed: {:.4} deg/ms",
+                                ctx.target_angle, pointer, ctx.angular_speed
+                            ))
+                            .ok();
+                        if let Err(_e) = input_emulator.press_space() {}
                         ctx.has_clicked = true;
                     }
                 }
