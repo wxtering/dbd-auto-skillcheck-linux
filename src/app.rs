@@ -1,11 +1,11 @@
 use egui::{CentralPanel, MenuBar, Panel, ScrollArea, ViewportCommand};
 
-use crate::{bot::run_bot, config::Config};
+use crate::{config::Config, platform::run_bot};
 
 pub struct AutoSkillCheck {
     config: Config,
     thread_handler: Option<tokio::task::JoinHandle<()>>,
-    pw_tx: Option<pipewire::channel::Sender<()>>,
+    pw_tx: Option<tokio::sync::oneshot::Sender<()>>,
     log_tx: tokio::sync::mpsc::Sender<String>,
     pw_log_rx: tokio::sync::mpsc::Receiver<String>,
     logs: std::collections::VecDeque<String>,
@@ -89,7 +89,7 @@ impl eframe::App for AutoSkillCheck {
                     self.log("Starting bot...");
                     self.logs.clear(); // Clear logs on start
                     let config = self.config.clone();
-                    let (tx, rx) = pipewire::channel::channel::<()>();
+                    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
                     let log_tx = self.log_tx.clone();
                     self.pw_tx = Some(tx);
 

@@ -1,4 +1,4 @@
-use dbd_auto_skillcheck_linux::config::get_config;
+use dbd_auto_skillcheck::config::get_config;
 #[tokio::main]
 async fn main() -> eframe::Result {
     let native_options = eframe::NativeOptions {
@@ -10,7 +10,7 @@ async fn main() -> eframe::Result {
         "DBD auto skillcheck",
         native_options,
         Box::new(|cc| {
-            Ok(Box::new(dbd_auto_skillcheck_linux::AutoSkillCheck::new(
+            Ok(Box::new(dbd_auto_skillcheck::AutoSkillCheck::new(
                 cc, config,
             )))
         }),

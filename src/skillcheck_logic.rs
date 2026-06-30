@@ -2,7 +2,7 @@
 //! Pure pixel analysis — no Vulkan, no PipeWire.
 
 use crate::config::Config;
-use crate::input::KeyboardEmulator;
+use crate::input::{InputEmulatorBackend, KeyboardEmulator};
 use std::collections::VecDeque;
 use std::time::Instant;
 
