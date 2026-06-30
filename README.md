@@ -129,7 +129,6 @@ To adapt the bot to your resolution (fhd and qhd should work fine) or reshade:
 
 ## TODO
 
-- [ ] **Wiggle Mode** — auto-click during wiggle skillchecks.
+- [x] ~~**Wiggle Mode** — auto-click during wiggle skillchecks.~~
 - [ ] **Perk Support** — handle Bardic Inspiration / Onryo
 - [ ] **Auto Focus** — when the bot detects a skillcheck, move the mouse cursor / focus to the game window
-- [ ] **Improve Detection Stability** — reduce flicker on widget borders (inner/ring mask hysteresis + smoothing).

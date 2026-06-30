@@ -76,7 +76,16 @@ impl From<&Config> for SkillCheckParams {
     }
 }
 
-pub struct ActiveContext {
+pub struct WiggleContext {
+    pub last_angle: f32,
+    pub unwrapped_angle: f32,
+    pub history: VecDeque<(Instant, f32)>,
+    pub angular_speed: f32,
+    pub consecutive_misses: u32,
+    pub last_click_time: Option<Instant>,
+}
+
+pub struct BasicContext {
     pub target_angle: f32,
     pub last_angle: f32,
     pub unwrapped_angle: f32,
@@ -96,7 +105,8 @@ pub enum SkillCheckState {
         pointer: f32,
         misses: u32,
     },
-    Active(ActiveContext),
+    Basic(BasicContext),
+    Wiggle(WiggleContext),
 }
 
 pub fn generate_patterns(circle: &Circle) -> (Vec<Pixel>, Vec<Pixel>, Vec<Pixel>) {
@@ -252,14 +262,14 @@ fn find_cluster_center(angles_mask: &[bool; 360]) -> Option<f32> {
     Some(mean_rad.to_degrees())
 }
 
-/// Scan 360° of the circle, return (white_zone_center, red_pointer_angle, white_edges).
+/// Scan 360° of the circle, return (white_zone_center, red_pointer_angle, white_edges, is_white).
 fn scan_angles(
     image: &[u8],
     stride: usize,
     circle_pattern: &[Pixel],
     params: &SkillCheckParams,
     _log_tx: &tokio::sync::mpsc::Sender<String>,
-) -> (Option<f32>, Option<f32>, Option<(f32, f32)>) {
+) -> (Option<f32>, Option<f32>, Option<(f32, f32)>, [bool; 360]) {
     let mut is_red = [false; 360];
     let mut is_white = [false; 360];
     for angle in 0..360 {
@@ -280,7 +290,31 @@ fn scan_angles(
     let edges = find_white_edges(&is_white);
     let target_angle = edges.map(|(s, e)| (s + e) / 2.0);
     let pointer_angle = find_cluster_center(&is_red);
-    (target_angle, pointer_angle, edges)
+    (target_angle, pointer_angle, edges, is_white)
+}
+
+/// Check if the white pattern is a wiggle.
+fn is_wiggle(is_white: &[bool; 360]) -> bool {
+    let mut left_count = 0;
+    let mut right_count = 0;
+    // Left zone (180 deg)
+    for pixel in 160..200 {
+        if is_white[pixel] {
+            left_count += 1;
+        }
+    }
+    // Right zone (0/360 deg)
+    for pixel in 0..20 {
+        if is_white[pixel] {
+            right_count += 1;
+        }
+    }
+    for pixel in 340..360 {
+        if is_white[pixel] {
+            right_count += 1;
+        }
+    }
+    left_count > 5 && right_count > 5
 }
 
 /// Unwrap angle to be monotonically ≥ current.
@@ -378,7 +412,9 @@ pub fn process_skillcheck_frame(
     // Ring is a discount on inner threshold (NOT a standalone detector).
     let currently_active = matches!(
         state,
-        SkillCheckState::Active(_) | SkillCheckState::Calibrating { .. }
+        SkillCheckState::Basic(_)
+            | SkillCheckState::Wiggle(_)
+            | SkillCheckState::Calibrating { .. }
     );
     let ring_ok = ring_ratio >= params.ring_boost;
     let (inner_thr_base, disc) = if currently_active {
@@ -395,21 +431,32 @@ pub fn process_skillcheck_frame(
     let mut pre_scanned = None;
 
     if !widget_visible && ring_ok && inner_ratio > 0.35 {
-        let (target_angle, pointer_angle, edges) =
+        let (target_angle, pointer_angle, edges, is_white) =
             scan_angles(pixels, stride, circle_pattern, params, log_tx);
         if target_angle.is_some() && pointer_angle.is_some() && edges.is_some() {
             widget_visible = true;
-            pre_scanned = Some((target_angle, pointer_angle, edges));
+            pre_scanned = Some((target_angle, pointer_angle, edges, is_white));
         }
     }
 
     if !widget_visible {
-        if let SkillCheckState::Active(ctx) = state {
+        if let SkillCheckState::Basic(ctx) = state {
             ctx.consecutive_misses += 1;
             if ctx.consecutive_misses as usize >= params.active_miss {
                 log_tx
                     .try_send(format!(
                         "Skillcheck inactive ({} misses).",
+                        ctx.consecutive_misses
+                    ))
+                    .ok();
+                *state = SkillCheckState::InSearch;
+            }
+        } else if let SkillCheckState::Wiggle(ctx) = state {
+            ctx.consecutive_misses += 1;
+            if ctx.consecutive_misses as usize >= params.active_miss {
+                log_tx
+                    .try_send(format!(
+                        "Wiggle inactive ({} misses).",
                         ctx.consecutive_misses
                     ))
                     .ok();
@@ -429,17 +476,42 @@ pub fn process_skillcheck_frame(
         }
         return;
     }
-    if let SkillCheckState::Active(ctx) = state {
+    if let SkillCheckState::Basic(ctx) = state {
+        ctx.consecutive_misses = 0;
+    } else if let SkillCheckState::Wiggle(ctx) = state {
         ctx.consecutive_misses = 0;
     }
 
     match state {
         SkillCheckState::InSearch => {
-            let (target_angle, pointer_angle, edges) = match pre_scanned {
+            let (target_angle, pointer_angle, edges, is_white) = match pre_scanned {
                 Some(angles) => angles,
                 None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
             if let (Some(target), Some(pointer)) = (target_angle, pointer_angle) {
+                // Wiggle detected! Target (approx): 180 or 0 deg.
+                let is_wiggle = is_wiggle(&is_white);
+
+                if is_wiggle {
+                    log_tx
+                        .try_send(format!(
+                            "Wiggle detected! Target (approx): {:.1}°, Pointer: {:.1}°",
+                            target, pointer
+                        ))
+                        .ok();
+                    let mut history = VecDeque::with_capacity(params.speed_history_min.max(8));
+                    history.push_back((Instant::now(), pointer));
+                    *state = SkillCheckState::Wiggle(WiggleContext {
+                        last_angle: pointer,
+                        unwrapped_angle: pointer,
+                        history,
+                        angular_speed: 0.0,
+                        consecutive_misses: 0,
+                        last_click_time: None,
+                    });
+                    return;
+                }
+
                 let is_at_start = pointer < 25.0 || pointer > 345.0;
                 if !is_at_start {
                     return;
@@ -464,7 +536,7 @@ pub fn process_skillcheck_frame(
             pointer: init_pointer,
             ..
         } => {
-            let (target_angle, pointer_angle, _edges) = match pre_scanned {
+            let (target_angle, pointer_angle, _edges, _) = match pre_scanned {
                 Some(angles) => angles,
                 None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
@@ -484,7 +556,7 @@ pub fn process_skillcheck_frame(
                     .ok();
                 let mut history = VecDeque::with_capacity(params.speed_history_min.max(8));
                 history.push_back((Instant::now(), pointer));
-                *state = SkillCheckState::Active(ActiveContext {
+                *state = SkillCheckState::Basic(BasicContext {
                     target_angle: avg,
                     last_angle: pointer,
                     unwrapped_angle: pointer,
@@ -501,11 +573,11 @@ pub fn process_skillcheck_frame(
                 };
             }
         }
-        SkillCheckState::Active(ctx) => {
+        SkillCheckState::Basic(ctx) => {
             if ctx.has_clicked {
                 return;
             }
-            let (_, pointer_angle, _edges) = match pre_scanned {
+            let (_, pointer_angle, _edges, _) = match pre_scanned {
                 Some(angles) => angles,
                 None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
@@ -531,12 +603,12 @@ pub fn process_skillcheck_frame(
             ctx.history.push_back((now, ctx.unwrapped_angle));
 
             // Recompute speed every frame over ALL accumulated samples.
-            if ctx.history.len() >= params.speed_history_min
-                && let Some(speed) = compute_speed_least_squares(&ctx.history)
-                && speed > 0.0
-                && speed < 2.0
-            {
-                ctx.angular_speed = speed;
+            if ctx.history.len() >= params.speed_history_min {
+                if let Some(speed) = compute_speed_least_squares(&ctx.history) {
+                    if speed > 0.0 && speed < 2.0 {
+                        ctx.angular_speed = speed;
+                    }
+                }
             }
 
             // Click decision.
@@ -555,6 +627,85 @@ pub fn process_skillcheck_frame(
                         if let Err(_e) = input_emulator.press_space() {}
                         ctx.has_clicked = true;
                     }
+                }
+            }
+        }
+        SkillCheckState::Wiggle(ctx) => {
+            let (_, pointer_angle, _edges, _) = match pre_scanned {
+                Some(angles) => angles,
+                None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
+            };
+            let Some(pointer) = pointer_angle else {
+                return;
+            };
+
+            let mut diff = pointer - ctx.last_angle;
+            if diff < -180.0 {
+                diff += 360.0;
+            } else if diff > 180.0 {
+                diff -= 360.0;
+            }
+
+            let now = Instant::now();
+            if diff.abs() < 0.001 {
+                return;
+            }
+
+            ctx.unwrapped_angle += diff.abs();
+            ctx.last_angle = pointer;
+            ctx.history.push_back((now, ctx.unwrapped_angle));
+            if ctx.history.len() > 15 {
+                ctx.history.pop_front();
+            }
+
+            // Wiggle speed is very linear; 3 frames (~50ms) is enough to estimate it.
+            if ctx.history.len() >= 3 {
+                if let Some(speed) = compute_speed_least_squares(&ctx.history) {
+                    if speed > 0.0 && speed < 3.0 {
+                        ctx.angular_speed = speed;
+                    }
+                }
+            }
+
+            // Dynamic target based on arrow direction:
+            // If moving clockwise (diff > 0), target is 0.0 (Right).
+            // If moving counter-clockwise (diff < 0), target is 180.0 (Left).
+            let target_angle = if diff > 0.0 { 0.0 } else { 180.0 };
+
+            let mut angle_to_go = target_angle - pointer;
+            if angle_to_go < -180.0 {
+                angle_to_go += 360.0;
+            } else if angle_to_go > 180.0 {
+                angle_to_go -= 360.0;
+            }
+
+            // Since target is always in front of our movement direction, correct_direction is always true.
+            // But we keep the check to prevent glitches at direction transition.
+            let correct_direction =
+                (diff > 0.0 && angle_to_go > 0.0) || (diff < 0.0 && angle_to_go < 0.0);
+
+            let mut can_click = true;
+            if let Some(last_click) = ctx.last_click_time {
+                if last_click.elapsed().as_millis() < 250 {
+                    can_click = false;
+                }
+            }
+
+            if correct_direction && ctx.angular_speed > 0.0 && can_click {
+                let dist = angle_to_go.abs();
+                let time_to_go = dist / ctx.angular_speed;
+                if time_to_go <= params.latency_ms {
+                    log_tx
+                        .try_send(format!(
+                            "WIGGLE CLICK Target: {} ({:.1}°), Pointer: {:.1}°, Speed: {:.4} deg/ms",
+                            if target_angle == 180.0 { "Left" } else { "Right" },
+                            target_angle,
+                            pointer,
+                            ctx.angular_speed
+                        ))
+                        .ok();
+                    if let Err(_e) = input_emulator.press_space() {}
+                    ctx.last_click_time = Some(Instant::now());
                 }
             }
         }
