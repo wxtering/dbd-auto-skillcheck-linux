@@ -1,9 +1,9 @@
 use crate::config::Config;
 use crate::input::KeyboardEmulator;
+use crate::platform::vulkan_linux::VulkanDmaBufBackend;
 use crate::skillcheck_logic::{
     Circle, Pixel, SkillCheckParams, SkillCheckState, generate_patterns, process_skillcheck_frame,
 };
-use crate::vulkan::VulkanDmaBufBackend;
 use ashpd::desktop::{
     PersistMode,
     screencast::{
@@ -61,7 +61,7 @@ async fn start_streaming(
     node_id: u32,
     fd: OwnedFd,
     cfg: &Config,
-    rx: pipewire::channel::Receiver<()>,
+    rx: tokio::sync::oneshot::Receiver<()>,
     log_tx: tokio::sync::mpsc::Sender<String>,
 ) -> Result<(), pw::Error> {
     log_tx
@@ -115,13 +115,22 @@ async fn start_streaming(
             *pw::keys::MEDIA_ROLE => "Screen",
         },
     )?;
-    // gracefully shutdown
-    let _receiver = rx.attach(&mainloop.loop_(), {
+    let (pw_signal_tx, pw_signal_rx) = pw::channel::channel::<()>();
+    let _receiver = pw_signal_rx.attach(&mainloop.loop_(), {
         let mainloop = mainloop.clone();
         move |_| {
             mainloop.quit();
         }
     });
+
+    let local_rt = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        local_rt.block_on(async move {
+            let _ = rx.await;
+        });
+        let _ = pw_signal_tx.send(());
+    });
+
     // pw mainloop listener with callbacks
     // todo
     let _listener = stream
@@ -249,7 +258,7 @@ async fn start_streaming(
 
 pub async fn run_bot(
     cfg: Config,
-    rx: pipewire::channel::Receiver<()>,
+    rx: tokio::sync::oneshot::Receiver<()>,
     log_tx: tokio::sync::mpsc::Sender<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log_tx.try_send("Opening portal...".to_string()).ok();

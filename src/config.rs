@@ -173,7 +173,6 @@ dark_val = 0.15
 red_hue_min = 15.0
 red_hue_max = 345.0
 red_sat_min = 0.6
-red_val_min = 0.5
 # White (Great) zone: max saturation, min brightness.
 white_sat_max = 0.1
 white_val_min = 0.92
@@ -181,6 +180,7 @@ white_val_min = 0.92
 grey_val_min = 0.15
 grey_val_max = 0.85
 grey_sat_max = 0.3
+dark_val = 0.15
 
 [timing]
 # Click trigger offset (ms). Increase if late, decrease if early.
