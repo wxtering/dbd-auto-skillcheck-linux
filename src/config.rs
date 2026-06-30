@@ -51,7 +51,7 @@ impl Default for DetectionConfig {
         Self {
             inner_enter: 0.75,
             inner_exit: 0.55,
-            ring_threshold: 0.70,
+            ring_threshold: 0.55,
             ring_discount: 0.25,
         }
     }
@@ -79,11 +79,11 @@ impl Default for ColorConfig {
             red_hue_max: 345.0,
             red_sat_min: 0.6,
             red_val_min: 0.5,
-            white_sat_max: 0.15,
-            white_val_min: 0.85,
+            white_sat_max: 0.1,
+            white_val_min: 0.92,
             grey_val_min: 0.15,
             grey_val_max: 0.85,
-            grey_sat_max: 0.30,
+            grey_sat_max: 0.3,
         }
     }
 }
@@ -101,7 +101,7 @@ impl Default for TimingConfig {
     fn default() -> Self {
         Self {
             speed_history_min: 8,
-            latency_ms: 20.0,
+            latency_ms: 18.0,
             calibrating_samples: 3,
             active_miss: 3,
             calibrating_miss: 2,
@@ -175,8 +175,8 @@ red_hue_max = 345.0
 red_sat_min = 0.6
 red_val_min = 0.5
 # White (Great) zone: max saturation, min brightness.
-white_sat_max = 0.15
-white_val_min = 0.85
+white_sat_max = 0.1
+white_val_min = 0.92
 # Grey background ring: value (brightness) min/max, max saturation.
 grey_val_min = 0.15
 grey_val_max = 0.85
@@ -184,7 +184,7 @@ grey_sat_max = 0.3
 
 [timing]
 # Click trigger offset (ms). Increase if late, decrease if early.
-latency_ms = 20.0
+latency_ms = 18.0
 # [probably you don't want to change this]
 speed_history_min = 8
 calibrating_samples = 3
@@ -200,6 +200,6 @@ product_id = 50475
 [detection]
 inner_enter = 0.75
 inner_exit = 0.55
-ring_threshold = 0.7
+ring_threshold = 0.55
 ring_discount = 0.25
 "##;
