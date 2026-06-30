@@ -115,7 +115,6 @@ async fn start_streaming(
             *pw::keys::MEDIA_ROLE => "Screen",
         },
     )?;
-    // gracefully shutdown using pipewire loop signal or a spawned thread since we use tokio oneshot
     let (pw_signal_tx, pw_signal_rx) = pw::channel::channel::<()>();
     let _receiver = pw_signal_rx.attach(&mainloop.loop_(), {
         let mainloop = mainloop.clone();
@@ -124,10 +123,14 @@ async fn start_streaming(
         }
     });
 
-    tokio::spawn(async move {
-        let _ = rx.await;
-        pw_signal_tx.send(()).ok();
+    let local_rt = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        local_rt.block_on(async move {
+            let _ = rx.await;
+        });
+        let _ = pw_signal_tx.send(());
     });
+
     // pw mainloop listener with callbacks
     // todo
     let _listener = stream

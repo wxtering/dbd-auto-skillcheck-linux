@@ -131,7 +131,7 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
 
 pub async fn run_bot(
     cfg: Config,
-    _rx: tokio::sync::oneshot::Receiver<()>,
+    rx: tokio::sync::oneshot::Receiver<()>,
     log_tx: Sender<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log_tx
@@ -170,14 +170,24 @@ pub async fn run_bot(
         },
     );
 
-    // Run blockingly since windows-capture manages the capture loop thread.
-    // Wrap in spawn_blocking if it blocks tokio reactor.
-    tokio::task::spawn_blocking(move || {
-        if let Err(e) = CaptureHandler::start(settings) {
-            log_tx.try_send(format!("Capture error: {:?}", e)).ok();
-        }
-    })
-    .await?;
+    // Start free-threaded (does not block current thread)
+    let capture_control = CaptureHandler::start_free_threaded(settings)?;
+
+    // Wait for the stop signal from GUI
+    let _ = rx.await;
+
+    log_tx
+        .try_send("Stopping Windows capture session...".to_string())
+        .ok();
+
+    // Stop the session gracefully
+    if let Err(e) = capture_control.stop() {
+        log_tx
+            .try_send(format!("Error during capture stop: {:?}", e))
+            .ok();
+    }
+
+    log_tx.try_send("Bot stopped gracefully".to_string()).ok();
 
     Ok(())
 }
