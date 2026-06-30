@@ -74,7 +74,7 @@ pub struct ColorConfig {
 impl Default for ColorConfig {
     fn default() -> Self {
         Self {
-            dark_val: 0.10,
+            dark_val: 0.15,
             red_hue_min: 15.0,
             red_hue_max: 345.0,
             red_sat_min: 0.6,
@@ -82,7 +82,7 @@ impl Default for ColorConfig {
             white_sat_max: 0.15,
             white_val_min: 0.85,
             grey_val_min: 0.15,
-            grey_val_max: 0.70,
+            grey_val_max: 0.85,
             grey_sat_max: 0.30,
         }
     }
@@ -168,7 +168,7 @@ crop_size = 300
 
 [colors]
 # Minimum luminance value below which a pixel is considered "dark" (inner circle).
-dark_val = 0.1
+dark_val = 0.15
 # Red pointer: hue range (hue outside this band = red), min saturation, min brightness.
 red_hue_min = 15.0
 red_hue_max = 345.0
@@ -179,7 +179,7 @@ white_sat_max = 0.15
 white_val_min = 0.85
 # Grey background ring: value (brightness) min/max, max saturation.
 grey_val_min = 0.15
-grey_val_max = 0.7
+grey_val_max = 0.85
 grey_sat_max = 0.3
 
 [timing]

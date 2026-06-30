@@ -50,8 +50,7 @@ Unlike traditional screenshot-based bots, this project imports PipeWire DMA-BUF 
 * **NVIDIA Driver**: v610.43.02
 * **Reshade**: Tested without Reshade, but should work fine as long as colors are not overly distorted/brightened.
 
-## Capture Source
-For best results, share the game window when prompted by the Wayland screencast portal.
+
 
 ## Setup uinput Permissions
 
@@ -114,7 +113,7 @@ cp target/release/cli ~/.local/bin/dbd-skillcheck-cli
 A default configuration file is automatically created at:
 `~/.config/dbd-auto-skillcheck-linux/config.toml`
 
-* `circle_center_x` / `circle_center_y` — coordinates of the skillcheck widget (default is set for 2560x1440).
+* `circle_center_x` / `circle_center_y` — coordinates of the skillcheck widget (default is set for 1920x1080).
 * `latency_ms` — input lag compensation (default 20.0 ms). **To click earlier, increase this value; to click later, decrease it** (since the bot triggers when `time_to_go <= latency_ms`).
 
 ### Tuning Parameters
