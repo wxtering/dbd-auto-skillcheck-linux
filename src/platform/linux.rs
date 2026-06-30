@@ -1,9 +1,9 @@
 use crate::config::Config;
 use crate::input::KeyboardEmulator;
+use crate::platform::vulkan_linux::VulkanDmaBufBackend;
 use crate::skillcheck_logic::{
     Circle, Pixel, SkillCheckParams, SkillCheckState, generate_patterns, process_skillcheck_frame,
 };
-use crate::platform::vulkan_linux::VulkanDmaBufBackend;
 use ashpd::desktop::{
     PersistMode,
     screencast::{
