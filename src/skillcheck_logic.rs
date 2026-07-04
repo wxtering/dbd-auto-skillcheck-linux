@@ -93,6 +93,7 @@ pub struct BasicContext {
     pub angular_speed: f32,
     pub has_clicked: bool,
     pub consecutive_misses: u32,
+    pub click_time: Option<Instant>,
 }
 
 #[derive(Default)]
@@ -534,47 +535,75 @@ pub fn process_skillcheck_frame(
         SkillCheckState::Calibrating {
             target_samples,
             pointer: init_pointer,
-            ..
+            misses,
         } => {
             let (target_angle, pointer_angle, _edges, _) = match pre_scanned {
                 Some(angles) => angles,
                 None => scan_angles(pixels, stride, circle_pattern, params, log_tx),
             };
-            let pointer = pointer_angle.unwrap_or(*init_pointer);
-            let mut samples = target_samples.clone();
-            if let Some(t) = target_angle {
-                samples.push(t);
-            }
-            if samples.len() >= params.calibrating_samples {
-                let avg = samples.iter().sum::<f32>() / samples.len() as f32;
-                log_tx
-                    .try_send(format!(
-                        "Target calibrated: {:.1}° ({} samples)",
-                        avg,
-                        samples.len()
-                    ))
-                    .ok();
-                let mut history = VecDeque::with_capacity(params.speed_history_min.max(8));
-                history.push_back((Instant::now(), pointer));
-                *state = SkillCheckState::Basic(BasicContext {
-                    target_angle: avg,
-                    last_angle: pointer,
-                    unwrapped_angle: pointer,
-                    history,
-                    angular_speed: 0.0,
-                    has_clicked: false,
-                    consecutive_misses: 0,
-                });
+
+            if let Some(pointer) = pointer_angle {
+                let mut samples = target_samples.clone();
+                if let Some(t) = target_angle {
+                    samples.push(t);
+                }
+                if samples.len() >= params.calibrating_samples {
+                    let avg = samples.iter().sum::<f32>() / samples.len() as f32;
+                    log_tx
+                        .try_send(format!(
+                            "Target calibrated: {:.1}° ({} samples)",
+                            avg,
+                            samples.len()
+                        ))
+                        .ok();
+                    let mut history = VecDeque::with_capacity(params.speed_history_min.max(8));
+                    history.push_back((Instant::now(), pointer));
+                    *state = SkillCheckState::Basic(BasicContext {
+                        target_angle: avg,
+                        last_angle: pointer,
+                        unwrapped_angle: pointer,
+                        history,
+                        angular_speed: 0.0,
+                        has_clicked: false,
+                        consecutive_misses: 0,
+                        click_time: None,
+                    });
+                } else {
+                    *state = SkillCheckState::Calibrating {
+                        target_samples: samples,
+                        pointer,
+                        misses: 0,
+                    };
+                }
             } else {
-                *state = SkillCheckState::Calibrating {
-                    target_samples: samples,
-                    pointer,
-                    misses: 0,
-                };
+                let new_misses = *misses + 1;
+                if new_misses as usize >= params.calibrating_miss {
+                    let _ = log_tx.try_send(format!(
+                        "Calibration aborted: inner={:.2}/{:.2}, ring={:.2}/{:.2}, target={}, pointer={}",
+                        inner_ratio,
+                        inner_thr,
+                        ring_ratio,
+                        params.ring_boost,
+                        target_angle.is_some(),
+                        pointer_angle.is_some()
+                    ));
+                    *state = SkillCheckState::InSearch;
+                } else {
+                    *state = SkillCheckState::Calibrating {
+                        target_samples: target_samples.clone(),
+                        pointer: *init_pointer,
+                        misses: new_misses,
+                    };
+                }
             }
         }
         SkillCheckState::Basic(ctx) => {
             if ctx.has_clicked {
+                if let Some(click_t) = ctx.click_time {
+                    if click_t.elapsed().as_millis() >= 200 {
+                        *state = SkillCheckState::InSearch;
+                    }
+                }
                 return;
             }
             let (_, pointer_angle, _edges, _) = match pre_scanned {
@@ -626,6 +655,7 @@ pub fn process_skillcheck_frame(
                             .ok();
                         if let Err(_e) = input_emulator.press_space() {}
                         ctx.has_clicked = true;
+                        ctx.click_time = Some(Instant::now());
                     }
                 }
             }
